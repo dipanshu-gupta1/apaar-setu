@@ -1,0 +1,18 @@
+﻿# Virtual Environment - NEVER COMMIT
+venv/
+.venv/
+env/
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
