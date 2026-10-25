@@ -290,9 +290,10 @@ export default function StudentsPage() {
               </thead>
               <tbody>
                 {rows.map((s) => {
+                 // ✅ AB YEH PASTE KAREIN:
                   const sStatus = s.status || 'pending'
-                  const meta = STATUS_META[sStatus as VerificationStatus] || { label: 'Pending', tone: 'warning' }
-
+                  const normalizedStatus = sStatus === 'correction_needed' ? 'correction' : sStatus
+                  const meta = STATUS_META[normalizedStatus as VerificationStatus] || { label: 'Pending', tone: 'warning' }
                   return (
                     <tr key={s.student_id}>
                       <td>

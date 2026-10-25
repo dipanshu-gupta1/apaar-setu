@@ -51,3 +51,8 @@ export const detectDualEnrollment = (records: any[]) =>
     method: 'POST',
     body: JSON.stringify(records),
   })
+  export const updateStudentStatus = (studentId: string, status: string) =>
+  apiRequest<{ message: string; data: any }>(
+    `/students/${encodeURIComponent(studentId)}/status?status=${encodeURIComponent(status)}`,
+    { method: 'PATCH' }
+  )

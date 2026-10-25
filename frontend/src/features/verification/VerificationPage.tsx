@@ -1,32 +1,26 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Badge, type Tone } from '../../components/ui/Badge'
 import { Icon } from '../../components/ui/Icon'
 import { PageHeader } from '../../components/ui/PageHeader'
-import { DEMO_CASES, type CasePriority } from '../../lib/mock/demoData'
-import { verifyStudentRecord, getCertificateBadge } from '../../lib/api/endpoints'
+import {
+  verifyStudentRecord,
+  getCertificateBadge,
+  getStudents,
+  updateStudentStatus,
+} from '../../lib/api/endpoints'
 import type { VerifiedStudentBadge, CertificateQrPayload } from '../../lib/api/types'
 
-type Decision = 'approve' | 'correction' | 'reject'
+type Decision = 'verified' | 'correction_needed' | 'failed'
 type ActiveTab = 'public_verify' | 'officer_queue'
 
 const DECISIONS: { value: Decision; label: string; hint: string }[] = [
-  { value: 'approve', label: 'Approve', hint: 'The data matches the evidence.' },
-  { value: 'correction', label: 'Request correction', hint: 'Send it back to the institution to fix.' },
-  { value: 'reject', label: 'Reject', hint: 'The data cannot be accepted.' },
+  { value: 'verified', label: 'Approve & Verify', hint: 'The data matches official academic records.' },
+  { value: 'correction_needed', label: 'Request Correction', hint: 'Send back to the institution to fix errors.' },
+  { value: 'failed', label: 'Reject Record', hint: 'Fraudulent or unverifiable student record.' },
 ]
 
-const PRIORITY: Record<CasePriority, { label: string; tone: Tone }> = {
-  high: { label: 'High priority', tone: 'danger' },
-  normal: { label: 'Normal priority', tone: 'warning' },
-  low: { label: 'Low priority', tone: 'neutral' },
-}
-
-function labelFor(decision: Decision): string {
-  return DECISIONS.find((d) => d.value === decision)?.label ?? decision
-}
-
 export default function VerificationPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('public_verify')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('officer_queue')
 
   // Live Backend Verification State
   const [identifierInput, setIdentifierInput] = useState('987654321012')
@@ -35,17 +29,36 @@ export default function VerificationPage() {
   const [qrPayload, setQrPayload] = useState<CertificateQrPayload | null>(null)
   const [verifyError, setVerifyError] = useState('')
 
-  // Officer Queue State
-  const [decided, setDecided] = useState<Record<string, Decision>>({})
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [choice, setChoice] = useState<Decision>('approve')
-  const [note, setNote] = useState('')
-  const [error, setError] = useState('')
+  // Officer Queue (Live Students from Supabase)
+  const [queueStudents, setQueueStudents] = useState<any[]>([])
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null)
+  const [choice, setChoice] = useState<Decision>('verified')
+  const [loadingQueue, setLoadingQueue] = useState(true)
+  const [submittingDecision, setSubmittingDecision] = useState(false)
   const [message, setMessage] = useState('')
 
-  const open = DEMO_CASES.filter((c) => !decided[c.id])
-  const done = DEMO_CASES.filter((c) => decided[c.id])
-  const selected = open.find((c) => c.id === selectedId) ?? open[0]
+  useEffect(() => {
+    fetchPendingStudents()
+  }, [])
+
+  async function fetchPendingStudents() {
+    setLoadingQueue(true)
+    try {
+      const allStudents = await getStudents('INST-AICTE-101')
+      // Filter students who are pending review
+      const pending = allStudents.filter((s) => s.status === 'pending')
+      setQueueStudents(pending)
+      if (pending.length > 0) {
+        setSelectedStudent(pending[0])
+      } else {
+        setSelectedStudent(null)
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setLoadingQueue(false)
+    }
+  }
 
   async function handleVerify(e: FormEvent) {
     e.preventDefault()
@@ -67,38 +80,37 @@ export default function VerificationPage() {
     }
   }
 
-  function select(id: string) {
-    setSelectedId(id)
-    setChoice('approve')
-    setNote('')
-    setError('')
-    setMessage('')
-  }
-
-  function submit(e: FormEvent) {
+  async function handleDecisionSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!selected) return
+    if (!selectedStudent) return
 
-    if (choice !== 'approve' && note.trim().length < 5) {
-      setError('Add a short reason so the institution knows what to fix.')
-      return
+    setSubmittingDecision(true)
+    setMessage('')
+    try {
+      await updateStudentStatus(selectedStudent.student_id, choice)
+      setMessage(`Decision recorded: ${selectedStudent.first_name} ${selectedStudent.last_name} marked as "${choice}".`)
+      await fetchPendingStudents()
+    } catch (err: any) {
+      alert(`Failed to record decision: ${err.message}`)
+    } finally {
+      setSubmittingDecision(false)
     }
-
-    setDecided((prev) => ({ ...prev, [selected.id]: choice }))
-    setMessage(`${labelFor(choice)} recorded for ${selected.id}.`)
-    setSelectedId(null)
-    setChoice('approve')
-    setNote('')
-    setError('')
   }
 
   return (
     <>
       <PageHeader
         title="Student Record Verification & Trust Portal"
-        description="Public employer authentication registry with anti-tamper QR code generation & officer review queue."
+        description="Public employer authentication registry with anti-tamper QR code generation & live officer review queue."
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className={`button ${activeTab === 'officer_queue' ? 'button-primary' : 'button-secondary'}`}
+              onClick={() => setActiveTab('officer_queue')}
+            >
+              Officer Queue ({queueStudents.length})
+            </button>
             <button
               type="button"
               className={`button ${activeTab === 'public_verify' ? 'button-primary' : 'button-secondary'}`}
@@ -106,18 +118,98 @@ export default function VerificationPage() {
             >
               Public / Employer Verification & QR
             </button>
-            <button
-              type="button"
-              className={`button ${activeTab === 'officer_queue' ? 'button-primary' : 'button-secondary'}`}
-              onClick={() => setActiveTab('officer_queue')}
-            >
-              Officer Queue ({open.length})
-            </button>
           </div>
         }
       />
 
-      {/* TAB 1: LIVE BACKEND VERIFICATION & QR CODE */}
+      {message && <p className="notice notice-success" role="status" style={{ marginBottom: 16 }}>{message}</p>}
+
+      {/* TAB 1: LIVE OFFICER QUEUE */}
+      {activeTab === 'officer_queue' && (
+        <>
+          {loadingQueue ? (
+            <section className="card empty-state">
+              <p>Loading pending verification cases from Supabase...</p>
+            </section>
+          ) : queueStudents.length === 0 ? (
+            <section className="card empty-state">
+              <Icon name="shield" size={28} />
+              <h2>The queue is clear!</h2>
+              <p>No student records are currently waiting for verification. All records are approved or processed.</p>
+            </section>
+          ) : (
+            <div className="queue">
+              <div className="stack">
+                <section>
+                  <h2 className="section-title">Pending Students ({queueStudents.length})</h2>
+                  <ul className="case-list">
+                    {queueStudents.map((s) => (
+                      <li key={s.student_id}>
+                        <button
+                          type="button"
+                          className={`case-item ${selectedStudent?.student_id === s.student_id ? 'is-selected' : ''}`}
+                          onClick={() => setSelectedStudent(s)}
+                        >
+                          <span className="case-top">
+                            <span className="case-name">{s.first_name} {s.last_name}</span>
+                            <Badge tone="warning">Pending Review</Badge>
+                          </span>
+                          <span className="case-meta">
+                            ID: {s.student_id} • {s.program || 'Engineering'}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+
+              {selectedStudent && (
+                <section className="card">
+                  <div className="case-top">
+                    <h2 className="card-title">{selectedStudent.first_name} {selectedStudent.last_name}</h2>
+                    <Badge tone="warning">Pending Review</Badge>
+                  </div>
+                  <p className="card-sub">Student ID: {selectedStudent.student_id}</p>
+
+                  <div style={{ marginTop: 12, padding: 12, background: '#18181b', borderRadius: 8 }}>
+                    <div><strong>Academic Program:</strong> {selectedStudent.program}</div>
+                    <div style={{ marginTop: 4 }}><strong>APAAR ID:</strong> <code>{selectedStudent.apaar_id || 'Not Assigned'}</code></div>
+                    <div style={{ marginTop: 4 }}><strong>Date of Birth:</strong> {selectedStudent.date_of_birth}</div>
+                    <div style={{ marginTop: 4 }}><strong>Enrollment Number:</strong> {selectedStudent.enrollment_number || 'Pending'}</div>
+                  </div>
+
+                  <form onSubmit={handleDecisionSubmit} className="decision-form" noValidate style={{ marginTop: 20 }}>
+                    <div className="choices">
+                      {DECISIONS.map((d) => (
+                        <label key={d.value} className="choice">
+                          <input
+                            type="radio"
+                            name="decision"
+                            value={d.value}
+                            checked={choice === d.value}
+                            onChange={() => setChoice(d.value)}
+                          />
+                          <div>
+                            <strong>{d.label}</strong>
+                            <p>{d.hint}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+
+                    <button type="submit" className="button button-primary" style={{ marginTop: 16 }} disabled={submittingDecision}>
+                      {submittingDecision ? 'Updating Supabase Cloud...' : 'Record Decision & Sync'}
+                    </button>
+                  </form>
+                </section>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* TAB 2: PUBLIC / EMPLOYER VERIFICATION */}
       {activeTab === 'public_verify' && (
         <div className="stack">
           <section className="card">
@@ -203,95 +295,6 @@ export default function VerificationPage() {
             </div>
           )}
         </div>
-      )}
-
-      {/* TAB 2: OFFICER QUEUE */}
-      {activeTab === 'officer_queue' && (
-        <>
-          {message && <p className="notice" role="status">{message}</p>}
-          {open.length === 0 ? (
-            <section className="card empty-state">
-              <Icon name="shield" size={28} />
-              <h2>The queue is clear</h2>
-              <p>There are no cases waiting for a decision.</p>
-            </section>
-          ) : (
-            <div className="queue">
-              <div className="stack">
-                <section aria-labelledby="open-heading">
-                  <h2 id="open-heading" className="section-title">Open cases ({open.length})</h2>
-                  <ul className="case-list">
-                    {open.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          className={`case-item ${c.id === selected.id ? 'is-selected' : ''}`}
-                          onClick={() => select(c.id)}
-                        >
-                          <span className="case-top">
-                            <span className="case-name">{c.studentName}</span>
-                            <Badge tone={PRIORITY[c.priority].tone}>{PRIORITY[c.priority].label}</Badge>
-                          </span>
-                          <span className="case-meta">
-                            {c.kind}, waiting {c.waitingDays} {c.waitingDays === 1 ? 'day' : 'days'}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                {done.length > 0 && (
-                  <section className="card">
-                    <h2 className="card-title">Decided in this session</h2>
-                    <ul className="activity">
-                      {done.map((c) => (
-                        <li key={c.id}>
-                          <span>{c.studentName}</span>
-                          <span className="muted">{labelFor(decided[c.id])}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-              </div>
-
-              <section className="card">
-                <div className="case-top">
-                  <h2 className="card-title">{selected.studentName}</h2>
-                  <Badge tone={PRIORITY[selected.priority].tone}>{PRIORITY[selected.priority].label}</Badge>
-                </div>
-                <p className="card-sub">{selected.id}, {selected.kind}</p>
-                <p className="panel-text">{selected.summary}</p>
-
-                <form onSubmit={submit} className="decision-form" noValidate style={{ marginTop: 16 }}>
-                  <div className="choices">
-                    {DECISIONS.map((d) => (
-                      <label key={d.value} className="choice">
-                        <input
-                          type="radio"
-                          name="decision"
-                          value={d.value}
-                          checked={choice === d.value}
-                          onChange={() => setChoice(d.value)}
-                        />
-                        <div>
-                          <strong>{d.label}</strong>
-                          <p>{d.hint}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-
-                  {error && <p className="form-error">{error}</p>}
-                  <button type="submit" className="button button-primary" style={{ marginTop: 12 }}>
-                    Record Decision
-                  </button>
-                </form>
-              </section>
-            </div>
-          )}
-        </>
       )}
     </>
   )

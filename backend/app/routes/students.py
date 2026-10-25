@@ -7,7 +7,6 @@ from database import supabase
 
 router = APIRouter(prefix="/students", tags=["students"])
 
-# Local persistence registry (Active when Supabase is not configured)
 LOCAL_REGISTRY = [
     {
         "student_id": "STU-1001",
@@ -35,19 +34,6 @@ LOCAL_REGISTRY = [
         "status": "pending",
         "updated": "2026-10-25",
     },
-    {
-        "student_id": "STU-1003",
-        "institution_id": "INST-AICTE-101",
-        "first_name": "Sneha",
-        "last_name": "Patel",
-        "date_of_birth": "2003-09-18",
-        "apaar_id": "765432109876",
-        "enrollment_number": "SVNIT21EC015",
-        "program": "B.Tech Electronics & Communication",
-        "admission_year": 2021,
-        "status": "verified",
-        "updated": "2026-10-23",
-    },
 ]
 
 @router.post("")
@@ -68,7 +54,6 @@ def create_student(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-    # Add to local registry
     LOCAL_REGISTRY.insert(0, payload)
     return {"message": "Student registered successfully in central registry", "data": [payload]}
 
@@ -83,3 +68,23 @@ def get_students(institution_id: str = Query("INST-AICTE-101", description="Inst
             raise HTTPException(status_code=400, detail=str(exc))
 
     return LOCAL_REGISTRY
+
+@router.patch("/{student_id}/status")
+def update_student_status(
+    student_id: str,
+    status: str = Query(..., description="verified / correction_needed / failed"),
+):
+    """Allows Verification Officer to approve or reject pending student records"""
+    if supabase is not None:
+        try:
+            result = supabase.table("students").update({"status": status}).eq("student_id", student_id).execute()
+            return {"message": f"Student status updated to {status}", "data": result.data}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    for s in LOCAL_REGISTRY:
+        if s.get("student_id") == student_id:
+            s["status"] = status
+            return {"message": f"Student status updated to {status}", "data": [s]}
+
+    raise HTTPException(status_code=404, detail="Student not found")
