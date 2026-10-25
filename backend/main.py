@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routes.students import router as students_router
 from app.routes.quality import router as quality_router
 from app.routes.analytics import router as analytics_router
@@ -9,6 +10,19 @@ app = FastAPI(
     title="AICTE APAAR-Setu Platform (SIH26263)",
     description="National Integrated Student Data Management, Anomaly Detection & Verification Ecosystem",
     version="1.0.0"
+)
+
+# CORS Configuration for Frontend (Vite runs on port 5173 by default)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
