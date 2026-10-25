@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Badge } from '../../components/ui/Badge'
 import { PageHeader } from '../../components/ui/PageHeader'
-import { CORRECTION_STATUS_META } from '../../lib/mock/demoData'
-import { useAuth } from '../auth/AuthContext'
 import { useCorrections } from './CorrectionsContext'
 import { useNotifications } from '../notifications/NotificationsContext'
 import { getStudents, updateStudent } from '../../lib/api/endpoints'
@@ -16,8 +14,14 @@ const DISCREPANCY_FIELDS = [
   'Academic Program',
 ]
 
+const STATUS_META: Record<string, { label: string; tone: 'warning' | 'info' | 'success' | 'danger' }> = {
+  submitted: { label: 'Ticket Logged', tone: 'warning' },
+  in_review: { label: 'Under Review', tone: 'info' },
+  approved: { label: 'Approved & Synced', tone: 'success' },
+  rejected: { label: 'Rejected', tone: 'danger' },
+}
+
 export default function CorrectionsPage() {
-  const { user } = useAuth()
   const { requests, addRequest, updateStatus } = useCorrections()
   const { addNotification } = useNotifications()
 
@@ -53,7 +57,7 @@ export default function CorrectionsPage() {
     return students.find((s) => s.student_id === selectedStudentId) || students[0]
   }, [students, selectedStudentId])
 
-  // Get current value preview
+  // Get current value preview from live Supabase record
   const currentValuePreview = useMemo(() => {
     if (!currentStudent) return 'Loading...'
     if (field === 'Date of Birth') return currentStudent.date_of_birth || 'Not recorded'
@@ -134,7 +138,7 @@ export default function CorrectionsPage() {
         await updateStudent(req.studentId, updates)
         setNotice(`✓ Database Synced: Student ${req.studentId} record successfully updated in Central Supabase Cloud to "${req.requestedValue}".`)
 
-        // Update local state and refetch
+        // Update local state and refetch from database
         await fetchRegisteredStudents()
       } catch (err: any) {
         console.error('Failed to sync update to Supabase:', err)
@@ -288,7 +292,7 @@ export default function CorrectionsPage() {
 
           <div className="request-list" style={{ marginTop: 16, display: 'grid', gap: 16 }}>
             {requests.map((r) => {
-              const meta = CORRECTION_STATUS_META[r.status] || { label: r.status, tone: 'warning' }
+              const meta = STATUS_META[r.status] || { label: r.status, tone: 'warning' }
               const isSyncing = syncingId === r.id
 
               return (
@@ -341,7 +345,7 @@ export default function CorrectionsPage() {
                   </p>
 
                   {r.evidence && (
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-faint)', margin: '4px 0' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0' }}>
                       <strong>Evidence:</strong> {r.evidence}
                     </p>
                   )}
