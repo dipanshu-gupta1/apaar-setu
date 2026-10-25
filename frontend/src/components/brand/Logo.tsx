@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export function Logo({ size = 40 }: { size?: number }) {
   return (
-    <Link to="/dashboard" className="logo" aria-label="APAAR Portal home">
+    <Link to="/dashboard" className="logo" aria-label="APAAR Setu home">
       <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
         <rect width="40" height="40" rx="11" fill="var(--accent)" />
         <path
@@ -24,9 +24,9 @@ export function Logo({ size = 40 }: { size?: number }) {
       </svg>
       <span className="logo-text">
         <strong>
-          APAAR <span>Portal</span>
+          APAAR <span>Setu</span>
         </strong>
-        <small>Student Data Platform</small>
+        <small>AICTE Student Data Platform</small>
       </span>
     </Link>
   )

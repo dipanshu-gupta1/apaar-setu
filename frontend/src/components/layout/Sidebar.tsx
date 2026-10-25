@@ -47,7 +47,7 @@ export function Sidebar({
         </ul>
       </nav>
 
-      <p className="sidebar-footer">Demo build. Synthetic data only.</p>
+      <p className="sidebar-footer">AICTE APAAR-Setu Platform</p>
     </aside>
   )
 }
