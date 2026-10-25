@@ -33,7 +33,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
       <div className="topbar-actions">
         <label className="role-switch">
-          <span>Demo role</span>
+          <span>Active Role</span>
           <select
             className="select"
             value={user.role}

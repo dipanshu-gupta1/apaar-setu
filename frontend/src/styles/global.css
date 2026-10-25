@@ -49,3 +49,72 @@ a {
     animation-duration: 0.01ms !important;
   }
 }
+/* ==========================================================================
+   AICTE APAAR-SETU THEME BUTTONS & INTERACTIVE ELEMENTS
+   ========================================================================== */
+.btn, .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn:disabled, .button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Primary Action Button (Emerald Green Theme) */
+.btn-primary, .button-primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: transparent;
+}
+
+.btn-primary:hover:not(:disabled), .button-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
+}
+
+/* Secondary Button (Dark Theme Surface) */
+.btn-secondary, .button-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.btn-secondary:hover:not(:disabled), .button-secondary:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  transform: translateY(-1px);
+}
+
+/* Interactive Student Name in Tables */
+.student-link-text {
+  color: var(--accent-text) !important;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none !important;
+  transition: color 0.15s ease;
+}
+
+.student-link-text:hover {
+  color: #86efac !important;
+  text-decoration: underline !important;
+}

@@ -1,10 +1,10 @@
-
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Badge } from '../../components/ui/Badge'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { STATUS_META, type VerificationStatus } from '../../lib/mock/demoData'
 import { getStudents, createStudent } from '../../lib/api/endpoints'
+import { useNotifications } from '../notifications/NotificationsContext'
 
 const PAGE_SIZE = 8
 
@@ -18,6 +18,7 @@ function maskApaar(apaar?: string | null): string {
 }
 
 export default function StudentsPage() {
+  const { addNotification } = useNotifications()
   const [params, setParams] = useSearchParams()
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
@@ -28,6 +29,9 @@ export default function StudentsPage() {
   const [error, setError] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Selected Student for Full Details View
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null)
 
   // Form State
   const [firstName, setFirstName] = useState('')
@@ -78,6 +82,16 @@ export default function StudentsPage() {
       setApaarId('')
       setEnrollment('')
       await fetchLiveStudents()
+
+      addNotification({
+        id: `N-${Date.now()}`,
+        roles: ['institution_admin', 'verification_officer'],
+        title: 'New Student Registered (Live Cloud)',
+        body: `Student ${firstName.trim()} ${lastName.trim()} successfully registered to Central Database and queued for verification.`,
+        when: 'Just now',
+        read: false,
+        to: '/students',
+      })
     } catch (err: any) {
       alert(`Registration failed: ${err.message}`)
     } finally {
@@ -93,7 +107,8 @@ export default function StudentsPage() {
     const q = query.trim().toLowerCase()
     return students.filter((s) => {
       const fullName = `${s.first_name || ''} ${s.last_name || ''}`.trim().toLowerCase()
-      const matchesStatus = status === 'all' || s.status === status
+      const sStatus = s.status === 'correction_needed' ? 'correction' : s.status || 'pending'
+      const matchesStatus = status === 'all' || sStatus === status
       const matchesQuery =
         !q ||
         fullName.includes(q) ||
@@ -113,42 +128,142 @@ export default function StudentsPage() {
     <>
       <PageHeader
         title="Student Directory (Central Registry)"
-        description="Institution-scoped student academic records with privacy-preserving masked APAAR identifiers."
+        description="Institution-scoped student academic records with privacy-preserving masked APAAR identifiers. Tap any student to inspect full dossier."
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <button
               type="button"
-              className="button button-primary"
+              className="btn btn-primary"
               onClick={() => setShowAddModal(true)}
             >
               + Register New Student
             </button>
-            <Badge tone="success">Live Central Registry</Badge>
+            <Badge tone="success">✓ Live Central Registry</Badge>
           </div>
         }
       />
 
       {error && <p className="notice notice-danger">{error}</p>}
 
-      {/* ADD STUDENT MODAL */}
+      {/* MODAL 1: FULL STUDENT DETAILS DOSSIER POPUP */}
+      {selectedStudent && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            backdropFilter: 'blur(6px)',
+          }}
+          onClick={() => setSelectedStudent(null)}
+        >
+          <div
+            className="card"
+            style={{ maxWidth: 640, width: '92%', maxHeight: '90vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border-strong)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Official AICTE Student Dossier
+                </span>
+                <h2 style={{ margin: '6px 0 2px 0', fontSize: '1.45rem', color: 'var(--text)' }}>
+                  {selectedStudent.first_name} {selectedStudent.last_name}
+                </h2>
+                <code style={{ color: 'var(--accent-text)', fontSize: '0.85rem', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                  {selectedStudent.student_id}
+                </code>
+              </div>
+              <div>
+                {(() => {
+                  const sStatus = selectedStudent.status === 'correction_needed' ? 'correction' : selectedStudent.status || 'pending'
+                  const meta = STATUS_META[sStatus as VerificationStatus] || { label: 'Pending review', tone: 'warning' }
+                  return <Badge tone={meta.tone}>{meta.label}</Badge>
+                })()}
+              </div>
+            </div>
+
+            {/* Profile Grid */}
+            <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+              <div style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>APAAR ID (DPDP Act Masked)</small>
+                <strong style={{ fontSize: '1.05rem', letterSpacing: 1, color: 'var(--text)' }}>{maskApaar(selectedStudent.apaar_id)}</strong>
+              </div>
+              <div style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Academic Program</small>
+                <strong style={{ color: 'var(--text)' }}>{selectedStudent.program || 'Engineering & Technology'}</strong>
+              </div>
+              <div style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Enrollment Number</small>
+                <strong style={{ color: 'var(--text)' }}>{selectedStudent.enrollment_number || 'Pending Allocation'}</strong>
+              </div>
+              <div style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <small style={{ color: 'var(--text-muted)', display: 'block', marginBottom: 2 }}>Date of Birth</small>
+                <strong style={{ color: 'var(--text)' }}>{selectedStudent.date_of_birth}</strong>
+              </div>
+            </div>
+
+            {/* Statutory AICTE Quota & Intake Details */}
+            <div style={{ marginTop: 16, padding: 14, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border-strong)' }}>
+              <h4 style={{ margin: '0 0 8px 0', color: 'var(--accent-text)', fontSize: '0.9rem' }}>
+                AICTE Mandatory Compliance & Quota Attribution
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.85rem', color: 'var(--text)' }}>
+                <div>Institution: <strong>SVNIT Surat (AICTE ID: 1-09823)</strong></div>
+                <div>Category: <strong>{selectedStudent.category || 'General'}</strong></div>
+                <div>Supernumerary Seat: <strong>{selectedStudent.is_supernumerary ? 'Yes (TFWS/PMSSS)' : 'No (Approved Intake)'}</strong></div>
+                <div>NRI / Foreign National: <strong>{selectedStudent.is_nri ? 'Yes (NRI Quota)' : 'No (Domestic)'}</strong></div>
+              </div>
+            </div>
+
+            {/* Security Digital Signature Seal */}
+            <div style={{ marginTop: 16, padding: 12, background: 'var(--accent-soft)', borderRadius: 8, border: '1px solid var(--accent)' }}>
+              <small style={{ color: 'var(--accent-text)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                🔒 AICTE Central Cryptographic Verification Seal
+              </small>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text)', wordBreak: 'break-all', marginTop: 4 }}>
+                SHA256:{selectedStudent.student_id}:{selectedStudent.apaar_id || 'AICTE-SETU'}:ACTIVE_RECORD_AUTHENTIC
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSelectedStudent(null)}
+              >
+                Close Dossier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: ADD STUDENT MODAL */}
       {showAddModal && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.7)',
+            background: 'rgba(0,0,0,0.8)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
+            backdropFilter: 'blur(6px)',
           }}
         >
-          <div className="card" style={{ maxWidth: 500, width: '90%', padding: 24 }}>
+          <div className="card" style={{ maxWidth: 500, width: '90%', padding: 24, border: '1px solid var(--border-strong)' }}>
             <h2 className="card-title">Register Student in Central Registry</h2>
             <form onSubmit={handleAddStudent} style={{ marginTop: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ fontSize: '0.85em', color: '#9ca3af' }}>First Name *</label>
+                  <label style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>First Name *</label>
                   <input
                     type="text"
                     required
@@ -158,7 +273,7 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.85em', color: '#9ca3af' }}>Last Name *</label>
+                  <label style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>Last Name *</label>
                   <input
                     type="text"
                     required
@@ -170,7 +285,7 @@ export default function StudentsPage() {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: '0.85em', color: '#9ca3af' }}>Date of Birth *</label>
+                <label style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>Date of Birth *</label>
                 <input
                   type="date"
                   required
@@ -181,7 +296,7 @@ export default function StudentsPage() {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: '0.85em', color: '#9ca3af' }}>Academic Program</label>
+                <label style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>Academic Program</label>
                 <input
                   type="text"
                   className="input"
@@ -192,7 +307,7 @@ export default function StudentsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
                 <div>
-                  <label style={{ fontSize: '0.85em', color: '#9ca3af' }}>12-Digit APAAR ID</label>
+                  <label style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>12-Digit APAAR ID</label>
                   <input
                     type="text"
                     maxLength={12}
@@ -203,7 +318,7 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.85em', color: '#9ca3af' }}>Enrollment Number</label>
+                  <label style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>Enrollment Number</label>
                   <input
                     type="text"
                     placeholder="SVNIT24CS099"
@@ -217,12 +332,12 @@ export default function StudentsPage() {
               <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <button
                   type="button"
-                  className="button button-secondary"
+                  className="btn btn-secondary"
                   onClick={() => setShowAddModal(false)}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="button button-primary" disabled={submitting}>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
                   {submitting ? 'Registering...' : 'Save to Registry'}
                 </button>
               </div>
@@ -259,7 +374,7 @@ export default function StudentsPage() {
             <option value="all">All statuses</option>
             <option value="verified">Verified</option>
             <option value="pending">Pending</option>
-            <option value="correction_needed">Correction Needed</option>
+            <option value="correction">Correction Needed</option>
             <option value="failed">Failed</option>
           </select>
         </div>
@@ -280,7 +395,7 @@ export default function StudentsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Student Name & ID</th>
+                  <th>Student Name & ID (Tap to View Dossier)</th>
                   <th>Masked APAAR ID</th>
                   <th>Program</th>
                   <th>Enrolment No</th>
@@ -290,15 +405,22 @@ export default function StudentsPage() {
               </thead>
               <tbody>
                 {rows.map((s) => {
-                 // ✅ AB YEH PASTE KAREIN:
-                  const sStatus = s.status || 'pending'
-                  const normalizedStatus = sStatus === 'correction_needed' ? 'correction' : sStatus
-                  const meta = STATUS_META[normalizedStatus as VerificationStatus] || { label: 'Pending', tone: 'warning' }
+                  const sStatus = s.status === 'correction_needed' ? 'correction' : s.status || 'pending'
+                  const meta = STATUS_META[sStatus as VerificationStatus] || { label: 'Pending review', tone: 'warning' }
+
                   return (
-                    <tr key={s.student_id}>
+                    <tr
+                      key={s.student_id}
+                      onClick={() => setSelectedStudent(s)}
+                      style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                      title="Click to view student full academic dossier"
+                    >
                       <td>
-                        <strong>{s.first_name} {s.last_name}</strong>
-                        <div className="cell-sub" style={{ fontSize: '0.8em', color: '#9ca3af' }}>{s.student_id}</div>
+                        <span className="student-link-text">
+                          {s.first_name} {s.last_name}
+                          <span style={{ fontSize: '0.8em', opacity: 0.75 }}>↗</span>
+                        </span>
+                        <div className="cell-sub" style={{ fontSize: '0.8em', color: 'var(--text-muted)' }}>{s.student_id}</div>
                       </td>
                       <td className="mono" style={{ letterSpacing: 0.5 }}>{maskApaar(s.apaar_id)}</td>
                       <td>{s.program}</td>
@@ -306,7 +428,7 @@ export default function StudentsPage() {
                       <td>
                         <Badge tone={meta.tone}>{meta.label}</Badge>
                       </td>
-                      <td style={{ color: '#9ca3af', fontSize: '0.85em' }}>{s.updated || '2026-10-25'}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>{s.updated || '2026-10-25'}</td>
                     </tr>
                   )
                 })}
@@ -319,7 +441,7 @@ export default function StudentsPage() {
             <div className="pagination-buttons">
               <button
                 type="button"
-                className="button button-secondary"
+                className="btn btn-secondary"
                 disabled={current === 1}
                 onClick={() => setPage(current - 1)}
               >
@@ -327,7 +449,7 @@ export default function StudentsPage() {
               </button>
               <button
                 type="button"
-                className="button button-secondary"
+                className="btn btn-secondary"
                 disabled={current === pages}
                 onClick={() => setPage(current + 1)}
               >

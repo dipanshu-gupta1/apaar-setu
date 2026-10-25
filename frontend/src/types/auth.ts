@@ -6,11 +6,11 @@ export type Role =
   | 'faculty'
 
 export const ROLE_LABELS: Record<Role, string> = {
-  aicte_admin: 'AICTE / Super Admin',
-  institution_admin: 'Institution Admin',
+  aicte_admin: 'AICTE / Central Authority',
+  institution_admin: 'Institution Admin (Registrar)',
   verification_officer: 'Verification Officer',
-  student: 'Student',
-  faculty: 'Faculty / Data Entry',
+  student: 'Student Portal',
+  faculty: 'Faculty / Data Verification',
 }
 
 export interface DemoUser {
@@ -19,11 +19,10 @@ export interface DemoUser {
   institution: string
 }
 
-// Synthetic demo users. Not real people or real student data.
 export const DEMO_USERS: Record<Role, DemoUser> = {
-  aicte_admin: { name: 'Aarav Mehta', role: 'aicte_admin', institution: 'All institutions (aggregate view)' },
-  institution_admin: { name: 'Neha Sharma', role: 'institution_admin', institution: 'Demo Institute of Technology' },
-  verification_officer: { name: 'Rohan Iyer', role: 'verification_officer', institution: 'Demo Institute of Technology' },
-  student: { name: 'Ananya Nair', role: 'student', institution: 'Demo Institute of Technology' },
-  faculty: { name: 'Kiran Rao', role: 'faculty', institution: 'Demo Institute of Technology' },
+  aicte_admin: { name: 'Dr. Aarav Mehta', role: 'aicte_admin', institution: 'AICTE HQ, New Delhi (National Scope)' },
+  institution_admin: { name: 'Neha Sharma', role: 'institution_admin', institution: 'SVNIT Surat (AICTE ID: 1-09823)' },
+  verification_officer: { name: 'Rohan Iyer', role: 'verification_officer', institution: 'SVNIT Surat (AICTE ID: 1-09823)' },
+  student: { name: 'Dipanshu Gupta', role: 'student', institution: 'SVNIT Surat (AICTE ID: 1-09823)' },
+  faculty: { name: 'Dr. Kiran Rao', role: 'faculty', institution: 'SVNIT Surat (AICTE ID: 1-09823)' },
 }

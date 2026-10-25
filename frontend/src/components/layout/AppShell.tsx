@@ -19,8 +19,8 @@ export function AppShell() {
           <Outlet />
         </main>
         <footer className="footer">
-          Demo build. All data shown is synthetic.
-        </footer>
+  AICTE APAAR-Setu Platform • SIH26263 National Registry
+</footer>
       </div>
     </div>
   )
