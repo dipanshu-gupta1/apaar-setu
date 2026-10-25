@@ -69,17 +69,17 @@ export default function DashboardPage() {
         <section className="card" style={{ marginBottom: 16 }}>
           <h2 className="card-title">National Academic Registry Overview (Live AICTE Data)</h2>
           <div className="stat-grid" style={{ marginTop: 8 }}>
-            <StatCard label="Enrolled Students" value={nationalMetrics.total_enrolled_students.toLocaleString()} tone="accent" />
-            <StatCard label="APAAR Coverage" value={`${nationalMetrics.apaar_coverage_percentage}%`} tone="success" />
-            <StatCard label="Intake Utilization" value={nationalMetrics.capacity_utilization_avg} tone="neutral" />
-            <StatCard label="Ghost Enrollments Flagged" value={nationalMetrics.flagged_dual_enrollments} tone="danger" />
+            <StatCard label="Enrolled Students" value={nationalMetrics.total_enrolled_students.toLocaleString()} icon="users" />
+            <StatCard label="APAAR Coverage" value={`${nationalMetrics.apaar_coverage_percentage}%`} icon="shield" />
+            <StatCard label="Intake Utilization" value={nationalMetrics.capacity_utilization_avg} icon="building" />
+            <StatCard label="Ghost Enrollments Flagged" value={String(nationalMetrics.flagged_dual_enrollments)} icon="file" />
           </div>
         </section>
       )}
 
       <section className="stat-grid" aria-label="Key metrics">
         {stats.map((s) => (
-          <StatCard key={s.id} label={s.label} value={s.value} tone={s.tone} meta={s.meta} />
+          <StatCard key={s.label} {...s} />
         ))}
       </section>
 
@@ -105,11 +105,11 @@ export default function DashboardPage() {
       <section className="card" aria-labelledby="activity-heading">
         <h2 id="activity-heading" className="card-title">Recent activity</h2>
         <ul className="activity">
-          {RECENT_ACTIVITY.map((a) => (
-            <li key={a.id} className="activity-item">
+          {RECENT_ACTIVITY.map((a, idx) => (
+            <li key={idx} className="activity-item">
               <div>
                 <p className="activity-text">{a.text}</p>
-                <time className="activity-time">{a.relativeTime}</time>
+                <time className="activity-time">{a.when}</time>
               </div>
             </li>
           ))}

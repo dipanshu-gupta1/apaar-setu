@@ -1,10 +1,10 @@
+
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { Badge } from '../../components/ui/Badge'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { STATUS_META, type VerificationStatus } from '../../lib/mock/demoData'
 import { getStudents, createStudent } from '../../lib/api/endpoints'
-import type { StudentRecord } from '../../lib/api/types'
 
 const PAGE_SIZE = 8
 

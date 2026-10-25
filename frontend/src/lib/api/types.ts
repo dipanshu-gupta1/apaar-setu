@@ -79,3 +79,13 @@ export interface NationalSummary {
   institutions_with_intake_breach: number
   system_status: string
 }
+// Dual Enrollment Alert
+export interface DualEnrollmentAlert {
+  student_name: string
+  apaar_id?: string
+  enrolled_institutions: string[]
+  programs: string[]
+  admission_years: number[]
+  fraud_severity: string
+  action: string
+}

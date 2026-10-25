@@ -130,7 +130,7 @@ export default function AiInsightsPage() {
                 <div style={{ marginTop: 8 }}>
                   <strong style={{ color: '#fca5a5' }}>Simultaneously Enrolled Institutions:</strong>
                   <ul style={{ marginTop: 4, paddingLeft: 20 }}>
-                    {alert.enrolled_institutions.map((inst, i) => (
+                    {alert.enrolled_institutions.map((inst: string, i: number) => (
                       <li key={i}>
                         <code>{inst}</code> — Program: {alert.programs[i]} (Batch {alert.admission_years[i]})
                       </li>
