@@ -5,6 +5,7 @@ from app.routes.quality import router as quality_router
 from app.routes.analytics import router as analytics_router
 from app.routes.verification import router as verification_router
 from database import supabase
+from app.routes import chatbot
 
 app = FastAPI(
     title="AICTE APAAR-Setu Platform (SIH26263)",
@@ -52,3 +53,4 @@ app.include_router(students_router)
 app.include_router(quality_router)
 app.include_router(analytics_router)
 app.include_router(verification_router)
+app.include_router(chatbot.router)

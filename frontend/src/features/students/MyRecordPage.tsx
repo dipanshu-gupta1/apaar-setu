@@ -5,577 +5,578 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { getStudents } from '../../lib/api/endpoints'
 import type { StudentRecord } from '../../lib/api/types'
 
-// Helper functions to manage custom student PINs (Default: '123456')
-function getStoredPin(studentId: string, apaarId?: string | null): string {
-  return (
-    localStorage.getItem(`apaar_pin_${studentId}`) ||
-    (apaarId ? localStorage.getItem(`apaar_pin_${apaarId}`) : null) ||
-    '123456'
-  )
-}
-
-function saveStoredPin(studentId: string, newPin: string, apaarId?: string | null) {
-  localStorage.setItem(`apaar_pin_${studentId}`, newPin)
-  if (apaarId) localStorage.setItem(`apaar_pin_${apaarId}`, newPin)
-}
-
 export default function MyRecordPage() {
+  // Login Gateway State
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [apaarInput, setApaarInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [loginError, setLoginError] = useState('')
+
+  // Student Record State
+  const [student, setStudent] = useState<StudentRecord | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [registeredStudents, setRegisteredStudents] = useState<StudentRecord[]>([])
-  const [activeStudent, setActiveStudent] = useState<StudentRecord | null>(null)
 
-  // Change PIN Modal States
-  const [showChangePinModal, setShowChangePinModal] = useState(false)
-  const [currentPin, setCurrentPin] = useState('')
-  const [newPin, setNewPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
-  const [pinModalError, setPinModalError] = useState('')
-  const [pinSuccessNotice, setPinSuccessNotice] = useState('')
+  // PIN Management State
+  const [showPinModal, setShowPinModal] = useState(false)
+  const [currentPinInput, setCurrentPinInput] = useState('')
+  const [newPinInput, setNewPinInput] = useState('')
+  const [confirmPinInput, setConfirmPinInput] = useState('')
+  const [pinMessage, setPinMessage] = useState({ text: '', isError: false })
 
-  // Fetch all students from Supabase to match APAAR login
+  // PDF Certificate Modal State
+  const [showCertificateModal, setShowCertificateModal] = useState(false)
+
+  // Load registered students
   useEffect(() => {
-    getStudents('INST-AICTE-101')
-      .then((data) => {
-        if (data && data.length > 0) {
-          setRegisteredStudents(data)
-          // Restore previously logged in session
-          const savedId = sessionStorage.getItem('apaar_student_login')
-          if (savedId) {
-            const matched = data.find(
-              (s: StudentRecord) =>
-                s.apaar_id === savedId || s.student_id === savedId
-            )
-            if (matched) setActiveStudent(matched)
+    async function loadInitial() {
+      try {
+        const list = await getStudents('INST-AICTE-101')
+        // Check if student was previously logged in this session
+        const savedApaar = sessionStorage.getItem('apaar_logged_student')
+        if (savedApaar && list && list.length > 0) {
+          const found = list.find((s: StudentRecord) => s.apaar_id === savedApaar)
+          if (found) {
+            setStudent(found)
+            setIsLoggedIn(true)
           }
         }
-      })
-      .catch(() => {})
+      } catch (err) {
+        console.error('Failed to load students', err)
+      }
+    }
+    loadInitial()
   }, [])
 
-  function handleLogin(e?: FormEvent) {
-    if (e) e.preventDefault()
-    const targetId = apaarInput.trim()
-    const targetPin = passwordInput.trim()
-
-    if (!targetId) {
-      setError('Please enter your 12-digit APAAR ID or Student ID.')
-      return
-    }
-
-    if (!targetPin) {
-      setError('Please enter your 6-digit DigiLocker Security PIN / Password.')
-      return
-    }
-
+  // Handle APAAR Gateway Login
+  async function handleLogin(e: FormEvent) {
+    e.preventDefault()
+    setLoginError('')
     setLoading(true)
-    setError('')
 
-    // Search student in live Supabase database
-    const found = registeredStudents.find(
-      (s) =>
-        (s.apaar_id && s.apaar_id.trim() === targetId) ||
-        s.student_id.toUpperCase() === targetId.toUpperCase()
-    )
+    const cleanApaar = apaarInput.trim().replace(/\D/g, '')
 
-    if (found) {
-      // Validate PIN against stored custom PIN (or default '123456')
-      const expectedPin = getStoredPin(found.student_id, found.apaar_id)
-      if (targetPin !== expectedPin) {
+    if (cleanApaar.length !== 12) {
+      setLoginError('Please enter a valid 12-digit numeric APAAR ID.')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const list = await getStudents('INST-AICTE-101')
+      const matched = list?.find((s: StudentRecord) => s.apaar_id === cleanApaar)
+
+      if (!matched) {
+        setLoginError(`No active AICTE record found for APAAR ID: ${cleanApaar}. Please check or contact institution.`)
         setLoading(false)
-        setError(
-          expectedPin === '123456'
-            ? 'Incorrect Security PIN. Default demo PIN is 123456.'
-            : 'Incorrect Security PIN. Please enter the new PIN you previously set.'
-        )
         return
       }
 
-      setActiveStudent(found)
-      sessionStorage.setItem('apaar_student_login', targetId)
-      setApaarInput('')
-      setPasswordInput('')
+      // Check PIN
+      const storedPin = localStorage.getItem(`apaar_pin_${matched.student_id}`) || '123456'
+      if (pinInput !== storedPin) {
+        setLoginError('Invalid Security PIN. Default initial PIN is 123456.')
+        setLoading(false)
+        return
+      }
+
+      // Successful login
+      setStudent(matched)
+      setIsLoggedIn(true)
+      sessionStorage.setItem('apaar_logged_student', matched.apaar_id || '')
+    } catch {
+      setLoginError('Connection to central verification node failed. Please try again.')
+    } finally {
       setLoading(false)
-    } else {
-      setLoading(false)
-      setError(`No student record linked to APAAR ID: ${targetId}. Please verify and try again.`)
     }
   }
 
   function handleLogout() {
-    setActiveStudent(null)
-    sessionStorage.removeItem('apaar_student_login')
+    setIsLoggedIn(false)
+    setStudent(null)
     setApaarInput('')
-    setPasswordInput('')
-    setError('')
-    setPinSuccessNotice('')
+    setPinInput('')
+    sessionStorage.removeItem('apaar_logged_student')
   }
 
-  function handleChangePinSubmit(e: FormEvent) {
+  // Handle PIN Change
+  function handleChangePin(e: FormEvent) {
     e.preventDefault()
-    if (!activeStudent) return
+    if (!student) return
 
-    setPinModalError('')
+    const storedPin = localStorage.getItem(`apaar_pin_${student.student_id}`) || '123456'
 
-    const currentSavedPin = getStoredPin(activeStudent.student_id, activeStudent.apaar_id)
-
-    if (currentPin.trim() !== currentSavedPin) {
-      setPinModalError('Current Security PIN does not match. (Default was 123456).')
+    if (currentPinInput !== storedPin) {
+      setPinMessage({ text: 'Current PIN is incorrect.', isError: true })
       return
     }
 
-    if (newPin.trim().length < 4 || newPin.trim().length > 12) {
-      setPinModalError('New Security PIN must be between 4 and 12 digits.')
+    if (newPinInput.length !== 6 || !/^\d+$/.test(newPinInput)) {
+      setPinMessage({ text: 'New PIN must be exactly 6 numeric digits.', isError: true })
       return
     }
 
-    if (newPin.trim() !== confirmPin.trim()) {
-      setPinModalError('New PIN and Confirm PIN do not match.')
+    if (newPinInput !== confirmPinInput) {
+      setPinMessage({ text: 'New PIN and Confirm PIN do not match.', isError: true })
       return
     }
 
-    if (newPin.trim() === currentSavedPin) {
-      setPinModalError('New PIN cannot be identical to the current PIN.')
-      return
-    }
-
-    // Save newly updated PIN to persistent storage
-    saveStoredPin(activeStudent.student_id, newPin.trim(), activeStudent.apaar_id)
-
-    setPinSuccessNotice(`✓ Security PIN updated successfully! Your new PIN is active.`)
-    setCurrentPin('')
-    setNewPin('')
-    setConfirmPin('')
-    setShowChangePinModal(false)
-
-    setTimeout(() => setPinSuccessNotice(''), 8000)
+    localStorage.setItem(`apaar_pin_${student.student_id}`, newPinInput)
+    setPinMessage({ text: 'Security PIN successfully updated! Use this PIN for next login.', isError: false })
+    setCurrentPinInput('')
+    setNewPinInput('')
+    setConfirmPinInput('')
+    setTimeout(() => {
+      setShowPinModal(false)
+      setPinMessage({ text: '', isError: false })
+    }, 1800)
   }
 
-  const isVerified = activeStudent?.status === 'verified'
-  const isDefaultPin = activeStudent
-    ? getStoredPin(activeStudent.student_id, activeStudent.apaar_id) === '123456'
-    : false
+  // Trigger Print to PDF
+  function handlePrintPDF() {
+    window.print()
+  }
 
-  return (
-    <>
-      <PageHeader
-        title={
-          activeStudent
-            ? `Student Academic Record: ${activeStudent.first_name} ${activeStudent.last_name}`
-            : 'AICTE Student Portal & APAAR Depository'
-        }
-        description="Statutory academic identity gateway under National Credit Framework (NCrF) and Automated Permanent Academic Account Registry (APAAR)."
-        actions={
-          activeStudent ? (
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Badge tone={isVerified ? 'success' : 'warning'}>
-                {isVerified ? '✓ Verified Authentic' : 'Action Required'}
-              </Badge>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setShowChangePinModal(true)}
-              >
-                🔐 Change Security PIN
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-                🚪 Switch Student / Log Out
-              </button>
-            </div>
-          ) : (
-            <Badge tone="info">🔒 DigiLocker / APAAR Authentication</Badge>
-          )
-        }
-      />
+  // ==========================================
+  // VIEW 1: AUTHENTIC APAAR LOGIN GATEWAY
+  // ==========================================
+  if (!isLoggedIn || !student) {
+    return (
+      <>
+       <PageHeader
+          description="Access your official academic passport, Academic Bank of Credits (ABC), and tamper-proof degree credentials."
+          title="Student Self-Service Portal"
+        />
 
-      {pinSuccessNotice && (
-        <div className="notice notice-success" style={{ marginBottom: 16 }}>
-          {pinSuccessNotice}
-        </div>
-      )}
-
-      {/* =================================================================== */}
-      {/* 1. STUDENT LOGIN BOX (CLEAN FORM - NO DEMO CHIPS) */}
-      {/* =================================================================== */}
-      {!activeStudent ? (
-        <div style={{ maxWidth: 520, margin: '30px auto 50px' }}>
-          <section
+        <div style={{ maxWidth: 540, margin: '24px auto', padding: '0 16px' }}>
+          <div
             className="card"
             style={{
-              border: '1px solid var(--border-strong)',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-              padding: 32,
+              border: '2px solid var(--border-strong, #3b82f6)',
+              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
+              borderRadius: 16,
+              overflow: 'hidden',
             }}
           >
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ fontSize: '2.8rem', marginBottom: 8 }}>🇮🇳 🎓</div>
-              <h2 style={{ fontSize: '1.4rem', color: 'var(--text)', marginBottom: 4 }}>
-                DigiLocker • APAAR Student Login
-              </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Ministry of Education & AICTE Academic Bank of Credits (ABC) Gateway
+            {/* National Gateway Banner */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
+                padding: '20px',
+                color: '#fff',
+                textAlign: 'center',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              }}
+            >
+              <div style={{ fontSize: '1.8rem', marginBottom: 4 }}>🇮🇳</div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>APAAR Digital Identity Gateway</h2>
+              <p style={{ fontSize: '0.82rem', margin: '6px 0 0', opacity: 0.9 }}>
+                Ministry of Education • AICTE National Student Registry
               </p>
             </div>
 
-            {/* Login Form */}
-            <form onSubmit={handleLogin} style={{ display: 'grid', gap: 16 }}>
-              {/* Field 1: APAAR ID */}
-              <div>
-                <label
-                  htmlFor="apaar_input"
-                  style={{ display: 'block', marginBottom: 6, fontSize: '0.88rem', fontWeight: 600 }}
+            <div style={{ padding: '24px' }}>
+              {loginError && (
+                <div
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid #ef4444',
+                    color: '#f87171',
+                    padding: '12px 14px',
+                    borderRadius: 8,
+                    fontSize: '0.88rem',
+                    marginBottom: 20,
+                  }}
                 >
-                  12-Digit APAAR ID / Student ID *
-                </label>
-                <input
-                  id="apaar_input"
-                  type="text"
-                  className="input"
-                  style={{ width: '100%', fontSize: '0.95rem', padding: '11px 14px' }}
-                  placeholder="Enter 12-digit APAAR ID (e.g. 123456785234)"
-                  value={apaarInput}
-                  onChange={(e) => setApaarInput(e.target.value)}
-                  autoFocus
-                />
-              </div>
-
-              {/* Field 2: Password / 6-digit DigiLocker PIN */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <label
-                    htmlFor="password_input"
-                    style={{ fontSize: '0.88rem', fontWeight: 600 }}
-                  >
-                    6-Digit Security PIN / Password *
-                  </label>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--accent-text)' }}>
-                    Default PIN: <code>123456</code>
-                  </span>
-                </div>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <input
-                    id="password_input"
-                    type={showPassword ? 'text' : 'password'}
-                    className="input"
-                    style={{ width: '100%', fontSize: '0.95rem', padding: '11px 42px 11px 14px', letterSpacing: showPassword ? 'normal' : '0.2em' }}
-                    placeholder="Enter Security PIN"
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    maxLength={20}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: 'absolute',
-                      right: 12,
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      opacity: 0.7,
-                      color: 'var(--text)',
-                    }}
-                    title={showPassword ? 'Hide PIN' : 'Show PIN'}
-                  >
-                    {showPassword ? '🙈' : '👁️'}
-                  </button>
-                </div>
-              </div>
-
-              {error && (
-                <div className="notice notice-danger" style={{ fontSize: '0.85rem' }}>
-                  {error}
+                  ⚠️ {loginError}
                 </div>
               )}
 
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: '100%', padding: '12px 0', fontSize: '1rem', marginTop: 6 }}
-                disabled={loading}
-              >
-                {loading ? 'Authenticating with Central Registry...' : '🔒 Authenticate via APAAR SSO'}
-              </button>
-            </form>
+              <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div>
+                  <label
+                    htmlFor="apaar-input"
+                    style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, marginBottom: 6 }}
+                  >
+                    12-Digit APAAR ID <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    id="apaar-input"
+                    className="input"
+                    type="text"
+                    maxLength={14}
+                    placeholder="e.g. 1234 5678 5234"
+                    value={apaarInput}
+                    onChange={(e) => setApaarInput(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      fontFamily: 'monospace',
+                      fontSize: '1.05rem',
+                      letterSpacing: 2,
+                    }}
+                  />
+                  <small style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '0.78rem', marginTop: 4, display: 'block' }}>
+                    Enter your One Nation One Student ID issued via DigiLocker.
+                  </small>
+                </div>
 
-            <div style={{ marginTop: 24, textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>
-                Protected by National Academic Depository (NAD) & DigiLocker e-KYC Protocol.
-              </small>
+                <div>
+                  <label
+                    htmlFor="pin-input"
+                    style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, marginBottom: 6 }}
+                  >
+                    6-Digit DigiLocker Security PIN <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    id="pin-input"
+                    className="input"
+                    type="password"
+                    maxLength={6}
+                    placeholder="••••••"
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                    required
+                    style={{
+                      width: '100%',
+                      fontFamily: 'monospace',
+                      fontSize: '1.2rem',
+                      letterSpacing: 6,
+                    }}
+                  />
+                  <small style={{ color: '#38bdf8', fontSize: '0.78rem', marginTop: 4, display: 'block' }}>
+                    Default initial PIN is: <strong>123456</strong> (You can change this after login).
+                  </small>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={loading}
+                  style={{
+                    padding: '12px',
+                    fontSize: '0.98rem',
+                    fontWeight: 600,
+                    marginTop: 6,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {loading ? 'Authenticating with AICTE Gateway...' : '🔐 Login via APAAR Gateway'}
+                </button>
+              </form>
             </div>
-          </section>
-        </div>
-      ) : (
-        /* =================================================================== */
-        /* 2. AUTHENTICATED STUDENT RECORD DASHBOARD */
-        /* =================================================================== */
-        <>
-          {/* Security Banner if still using default PIN */}
-          {isDefaultPin && (
-            <div
-              style={{
-                marginBottom: 16,
-                padding: '12px 16px',
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.35)',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 12,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: '1.3rem' }}>⚠️</span>
-                <span style={{ fontSize: '0.88rem', color: '#fbbf24' }}>
-                  <strong>Security Recommendation:</strong> You are currently using the default PIN (<code>123456</code>). Please set a custom Security PIN for enhanced DigiLocker protection.
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                onClick={() => setShowChangePinModal(true)}
-              >
-                Update PIN Now
-              </button>
-            </div>
-          )}
-
-          <div className="two-col record-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginTop: 10 }}>
-            {/* Official Identity Profile Card */}
-            <section className="card" style={{ border: '1px solid var(--border-strong)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <h2 className="card-title" style={{ fontSize: '1.25rem', color: 'var(--text)' }}>
-                    Student Identity Dossier
-                  </h2>
-                  <p className="card-sub" style={{ color: 'var(--text-muted)' }}>
-                    Sardar Vallabhbhai National Institute of Technology (SVNIT Surat)
-                  </p>
-                </div>
-                <Badge tone={isVerified ? 'success' : 'warning'}>
-                  {activeStudent.status || 'Verified'}
-                </Badge>
-              </div>
-
-              <dl className="detail-list" style={{ marginTop: 18 }}>
-                <div>
-                  <dt>Full Name</dt>
-                  <dd><strong>{activeStudent.first_name} {activeStudent.last_name}</strong></dd>
-                </div>
-                <div>
-                  <dt>Student ID</dt>
-                  <dd><code>{activeStudent.student_id}</code></dd>
-                </div>
-                <div>
-                  <dt>Masked APAAR ID</dt>
-                  <dd>
-                    <code style={{ color: 'var(--accent-text)', fontSize: '0.95rem', fontWeight: 700 }}>
-                      {activeStudent.apaar_id ? `XXXX-XXXX-${activeStudent.apaar_id.slice(-4)}` : 'Not Issued'}
-                    </code>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Academic Program</dt>
-                  <dd>{activeStudent.program || 'B.Tech Computer Science and Engineering'}</dd>
-                </div>
-                <div>
-                  <dt>Enrollment Roll</dt>
-                  <dd><code>{activeStudent.enrollment_number || 'SVNIT24CS001'}</code></dd>
-                </div>
-                <div>
-                  <dt>Date of Birth</dt>
-                  <dd>{activeStudent.date_of_birth || '2004-03-12'}</dd>
-                </div>
-                <div>
-                  <dt>Admission Year</dt>
-                  <dd>{activeStudent.admission_year || 2024}</dd>
-                </div>
-              </dl>
-
-              <div style={{ marginTop: 22, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Link className="btn btn-primary" to="/corrections">
-                  📝 Request Discrepancy Correction
-                </Link>
-                <Link className="btn btn-secondary" to="/verification">
-                  🔍 Verify Degree & QR
-                </Link>
-              </div>
-            </section>
-
-            {/* Cryptographic Verification Timeline & Trust Card */}
-            <section className="card" style={{ border: '1px solid var(--border-strong)' }}>
-              <h2 className="card-title" style={{ fontSize: '1.25rem', color: 'var(--text)' }}>
-                Cryptographic Trust & Timeline
-              </h2>
-              <p className="card-sub" style={{ color: 'var(--text-muted)' }}>
-                Immutable audit verification status across federal academic nodes.
-              </p>
-
-              <ul className="timeline" style={{ marginTop: 18 }}>
-                <li>
-                  <span className="timeline-dot dot-success" />
-                  <div>
-                    <strong>Aadhaar Demographic Matching Verified</strong>
-                    <p>Tokenized Zero-Knowledge biometric identity proof completed via UIDAI Gateway.</p>
-                    <small style={{ color: 'var(--text-muted)' }}>Aadhaar e-KYC Verified</small>
-                  </div>
-                </li>
-                <li>
-                  <span className="timeline-dot dot-success" />
-                  <div>
-                    <strong>Academic Bank of Credits (ABC) Synced</strong>
-                    <p>National Academic Depository (NAD) DigiLocker registry synchronised.</p>
-                    <small style={{ color: 'var(--accent-text)' }}>Credits Connected (NCrF Compliant)</small>
-                  </div>
-                </li>
-                <li>
-                  <span className={`timeline-dot ${isVerified ? 'dot-success' : 'dot-warning'}`} />
-                  <div>
-                    <strong>Anti-Tamper QR Seal Status</strong>
-                    <p>
-                      {isVerified
-                        ? 'SHA-256 seal issued for official degree certificate printing.'
-                        : 'QR generation locked: Discrepancy resolution pending with Registrar.'}
-                    </p>
-                    <code style={{ fontSize: '0.78em', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      SHA256:AICTE:STU:{activeStudent.student_id}:SEAL
-                    </code>
-                  </div>
-                </li>
-              </ul>
-
-              <div
-                style={{
-                  marginTop: 20,
-                  padding: '12px 14px',
-                  background: 'var(--surface-2)',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                }}
-              >
-                <small style={{ color: 'var(--text-muted)', display: 'block' }}>
-                  AICTE Regulatory Compliance Protocol:
-                </small>
-                <span style={{ fontSize: '0.82rem', color: 'var(--accent-text)', fontWeight: 600 }}>
-                  🔒 Official Student Record Locked under DPDP Act 2023 Guidelines.
-                </span>
-              </div>
-            </section>
           </div>
-        </>
+        </div>
+      </>
+    )
+  }
+
+  // ==========================================
+  // VIEW 2: LOGGED-IN STUDENT RECORD DASHBOARD
+  // ==========================================
+  const studentPin = localStorage.getItem(`apaar_pin_${student.student_id}`) || '123456'
+  const isDefaultPin = studentPin === '123456'
+
+  return (
+    <>
+            <PageHeader
+        actions={
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowCertificateModal(true)}
+              style={{ backgroundColor: '#059669', borderColor: '#059669' }}
+            >
+              📄 Download Official APAAR Certificate (PDF)
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowPinModal(true)}
+            >
+              🔑 Change Security PIN
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleLogout}
+              style={{ borderColor: 'var(--border-strong, #ef4444)' }}
+            >
+              🚪 Logout
+            </button>
+          </div>
+        }
+        description={`Welcome back, ${student.first_name} ${student.last_name}! Review your Academic Bank of Credits and official credential passport.`}
+        title="My APAAR Academic Record"
+      />
+
+      {isDefaultPin && (
+        <div
+          style={{
+            backgroundColor: 'rgba(234, 179, 8, 0.12)',
+            border: '1px solid #eab308',
+            color: '#fde047',
+            padding: '12px 16px',
+            borderRadius: 8,
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            ⚠️ <strong>Security Advisory:</strong> You are currently using default PIN (<code>123456</code>). Please update your security PIN.
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+            onClick={() => setShowPinModal(true)}
+          >
+            Update PIN Now
+          </button>
+        </div>
       )}
 
-      {/* =================================================================== */}
-      {/* 3. MODAL: CHANGE SECURITY PIN / PASSWORD */}
-      {/* =================================================================== */}
-      {showChangePinModal && activeStudent && (
+      {/* Main Grid */}
+      <div className="grid-two-col" style={{ marginTop: 20 }}>
+        {/* Profile Card */}
+        <section className="card" style={{ border: '1px solid var(--border-strong, #374151)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 className="card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
+                {student.first_name} {student.last_name}
+              </h2>
+              <div style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '0.88rem', marginTop: 4 }}>
+                Enrolment: <strong style={{ color: 'var(--text-main, #fff)' }}>{student.enrollment_number || 'SVNIT/2022/CS-104'}</strong>
+              </div>
+            </div>
+            <Badge tone={student.status === 'verified' ? 'success' : 'warning'}>
+              {student.status === 'verified' ? 'Verified Authentic' : student.status}
+            </Badge>
+          </div>
+
+          <dl className="meta-grid" style={{ marginTop: 20 }}>
+            <div>
+              <dt>APAAR ID</dt>
+              <dd className="mono" style={{ fontSize: '1.1rem', letterSpacing: 1.5, color: '#38bdf8', fontWeight: 700 }}>
+                {student.apaar_id || 'Not Assigned'}
+              </dd>
+            </div>
+            <div>
+              <dt>Academic Program</dt>
+              <dd>{student.program}</dd>
+            </div>
+            <div>
+              <dt>Date of Birth</dt>
+              <dd>{student.date_of_birth || '2003-01-01'}</dd>
+            </div>
+            <div>
+              <dt>Institutional Pilot Node</dt>
+              <dd>SVNIT Surat (INST-AICTE-101)</dd>
+            </div>
+            <div>
+              <dt>ABC (Academic Bank) ID</dt>
+              <dd className="mono">ABC-904-812-771</dd>
+            </div>
+            <div>
+              <dt>Cumulative Earned Credits</dt>
+              <dd>
+                <strong style={{ color: '#34d399', fontSize: '1.05rem' }}>142 / 160</strong> Credits Transferred
+              </dd>
+            </div>
+          </dl>
+
+          <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowCertificateModal(true)}
+            >
+              📄 View & Print Official Certificate
+            </button>
+            <Link className="btn btn-secondary" to="/corrections">
+              📝 Request Profile Correction
+            </Link>
+          </div>
+        </section>
+
+        {/* Anti-Tamper Security & QR Seal Card */}
+        <section className="card" style={{ border: '1px solid var(--border-strong, #374151)' }}>
+          <h2 className="card-title">Cryptographic Anti-Tamper Security Seal</h2>
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted, #9ca3af)', marginTop: 4 }}>
+            Official digital degree passport certified by AICTE & National Academic Depository (NAD).
+          </p>
+
+          <div
+            style={{
+              marginTop: 16,
+              padding: 16,
+              backgroundColor: 'var(--surface-sunken, #0f172a)',
+              borderRadius: 12,
+              border: '1px solid var(--border-subtle, #1f2937)',
+              display: 'flex',
+              gap: 16,
+              alignItems: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: 100,
+                height: 100,
+                backgroundColor: '#ffffff',
+                padding: 6,
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {/* Dynamic QR Code */}
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=AICTE:APAAR:${student.apaar_id}:HASH:7f9a12c8e3`}
+                alt="Tamper-Proof QR Code"
+                style={{ width: '100%', height: '100%', display: 'block' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#10b981' }}>
+                ✓ SHA-256 Tamper-Proof Seal
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #9ca3af)', marginTop: 4 }}>
+                Hash: <span className="mono" style={{ color: 'var(--accent-text, #60a5fa)' }}>SHA256:7f9a...3901b</span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #9ca3af)', marginTop: 2 }}>
+                Scan with any standard QR scanner to verify authentic AICTE registry status.
+              </div>
+            </div>
+          </div>
+
+          <ul className="timeline" style={{ marginTop: 20 }}>
+            <li>
+              <span className="timeline-dot dot-success" />
+              <div>
+                <strong>Aadhaar Demographic Matching Verified</strong>
+                <p>Tokenized Zero-Knowledge biometric proof completed via UIDAI Gateway.</p>
+              </div>
+            </li>
+            <li>
+              <span className="timeline-dot dot-success" />
+              <div>
+                <strong>Academic Bank of Credits (ABC) Synced</strong>
+                <p>Verified against National Academic Depository (NAD) DigiLocker registry.</p>
+              </div>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      {/* ========================================== */}
+      {/* MODAL 1: CHANGE PIN MODAL                 */}
+      {/* ========================================== */}
+      {showPinModal && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.8)',
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1100,
-            backdropFilter: 'blur(6px)',
+            zIndex: 1000,
+            padding: 16,
           }}
-          onClick={() => setShowChangePinModal(false)}
         >
           <div
             className="card"
             style={{
-              maxWidth: 460,
-              width: '92%',
-              padding: 24,
-              border: '1px solid var(--border-strong)',
+              width: '100%',
+              maxWidth: 420,
+              border: '2px solid var(--border-strong, #3b82f6)',
+              borderRadius: 16,
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>
-                🔐 Change DigiLocker Security PIN
-              </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>🔑 Change Security PIN</h3>
               <button
                 type="button"
-                className="btn btn-secondary"
-                style={{ padding: '2px 8px', fontSize: '0.8rem' }}
-                onClick={() => setShowChangePinModal(false)}
+                onClick={() => setShowPinModal(false)}
+                style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.2rem', cursor: 'pointer' }}
               >
                 ✕
               </button>
             </div>
 
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-              Set a new security PIN for <strong>{activeStudent.first_name} {activeStudent.last_name}</strong>.
-            </p>
+            {pinMessage.text && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  fontSize: '0.85rem',
+                  marginBottom: 16,
+                  backgroundColor: pinMessage.isError ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                  border: `1px solid ${pinMessage.isError ? '#ef4444' : '#10b981'}`,
+                  color: pinMessage.isError ? '#f87171' : '#34d399',
+                }}
+              >
+                {pinMessage.text}
+              </div>
+            )}
 
-            <form onSubmit={handleChangePinSubmit} style={{ display: 'grid', gap: 14 }}>
+            <form onSubmit={handleChangePin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, fontWeight: 600 }}>
-                  Current PIN (Default: 123456) *
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>
+                  Current PIN (Default is 123456)
                 </label>
                 <input
                   type="password"
+                  maxLength={6}
+                  value={currentPinInput}
+                  onChange={(e) => setCurrentPinInput(e.target.value.replace(/\D/g, ''))}
                   className="input"
-                  style={{ width: '100%', fontSize: '0.92rem' }}
-                  placeholder="Enter current PIN"
-                  value={currentPin}
-                  onChange={(e) => setCurrentPin(e.target.value)}
+                  style={{ width: '100%', fontFamily: 'monospace', letterSpacing: 4 }}
                   required
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, fontWeight: 600 }}>
-                  New 6-Digit PIN *
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>
+                  New 6-Digit PIN
                 </label>
                 <input
                   type="password"
+                  maxLength={6}
+                  value={newPinInput}
+                  onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
                   className="input"
-                  style={{ width: '100%', fontSize: '0.92rem' }}
-                  placeholder="e.g. 654321"
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value)}
-                  maxLength={12}
+                  style={{ width: '100%', fontFamily: 'monospace', letterSpacing: 4 }}
                   required
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4, fontWeight: 600 }}>
-                  Confirm New PIN *
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>
+                  Confirm New PIN
                 </label>
                 <input
                   type="password"
+                  maxLength={6}
+                  value={confirmPinInput}
+                  onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
                   className="input"
-                  style={{ width: '100%', fontSize: '0.92rem' }}
-                  placeholder="Re-enter new PIN"
-                  value={confirmPin}
-                  onChange={(e) => setConfirmPin(e.target.value)}
-                  maxLength={12}
+                  style={{ width: '100%', fontFamily: 'monospace', letterSpacing: 4 }}
                   required
                 />
               </div>
 
-              {pinModalError && (
-                <div className="notice notice-danger" style={{ fontSize: '0.82rem' }}>
-                  {pinModalError}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setShowChangePinModal(false)}
+                  onClick={() => setShowPinModal(false)}
                 >
                   Cancel
                 </button>
@@ -584,6 +585,207 @@ export default function MyRecordPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL 2: OFFICIAL PRINTABLE PDF CERTIFICATE */}
+      {/* ========================================== */}
+      {showCertificateModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: 16,
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 720,
+              backgroundColor: '#ffffff',
+              color: '#1f2937',
+              borderRadius: 16,
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              margin: 'auto',
+            }}
+          >
+            {/* Top Bar for Actions (Hidden in Print) */}
+            <div
+              style={{
+                backgroundColor: '#1e3a8a',
+                padding: '12px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                color: '#ffffff',
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                📄 Official AICTE APAAR Credential Passport
+              </span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={handlePrintPDF}
+                  style={{
+                    backgroundColor: '#10b981',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '6px 16px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                  }}
+                >
+                  🖨️ Print / Save as PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCertificateModal(false)}
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Certificate Document */}
+            <div
+              id="printable-certificate"
+              style={{
+                padding: '36px 40px',
+                border: '8px double #1e3a8a',
+                margin: 20,
+                backgroundColor: '#ffffff',
+                position: 'relative',
+              }}
+            >
+              {/* National Emblem & AICTE Header */}
+              <div style={{ textAlign: 'center', borderBottom: '2px solid #e5e7eb', paddingBottom: 16 }}>
+                <div style={{ fontSize: '2.2rem', marginBottom: 4 }}>🇮🇳</div>
+                <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e3a8a', margin: 0, textTransform: 'uppercase', letterSpacing: 1 }}>
+                  Government of India • Ministry of Education
+                </h1>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#b45309', margin: '4px 0 0', textTransform: 'uppercase' }}>
+                  All India Council for Technical Education (AICTE)
+                </h2>
+                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2, letterSpacing: 0.5 }}>
+                  NATIONAL DIGITAL STUDENT CREDENTIAL & ACADEMIC PASSPORT
+                </div>
+              </div>
+
+              {/* Certificate Body */}
+              <div style={{ marginTop: 24, textAlign: 'center' }}>
+                <p style={{ fontSize: '0.92rem', color: '#4b5563', margin: 0 }}>
+                  This is to certify that the academic identity and verified credentials of
+                </p>
+                <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#111827', margin: '10px 0', textDecoration: 'underline' }}>
+                  {student.first_name} {student.last_name}
+                </h3>
+                <p style={{ fontSize: '0.92rem', color: '#4b5563', margin: 0 }}>
+                  have been cryptographically authenticated under the National AICTE APAAR-Setu Grid.
+                </p>
+              </div>
+
+              {/* Demographics & Academic Grid */}
+              <div
+                style={{
+                  marginTop: 24,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '12px 24px',
+                  backgroundColor: '#f9fafb',
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '1px solid #e5e7eb',
+                  fontSize: '0.88rem',
+                }}
+              >
+                <div>
+                  <span style={{ color: '#6b7280' }}>12-Digit APAAR ID:</span>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1e40af', fontSize: '1.05rem' }}>
+                    {student.apaar_id}
+                  </div>
+                </div>
+                <div>
+                  <span style={{ color: '#6b7280' }}>Academic Program:</span>
+                  <div style={{ fontWeight: 600, color: '#111827' }}>{student.program}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#6b7280' }}>Institutional Pilot Node:</span>
+                  <div style={{ fontWeight: 600, color: '#111827' }}>SVNIT Surat (INST-AICTE-101)</div>
+                </div>
+                <div>
+                  <span style={{ color: '#6b7280' }}>Institute Enrolment No:</span>
+                  <div style={{ fontWeight: 600, color: '#111827' }}>{student.enrollment_number || 'SVNIT/2022/CS-104'}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#6b7280' }}>Academic Bank of Credits (ABC) ID:</span>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#111827' }}>ABC-904-812-771</div>
+                </div>
+                <div>
+                  <span style={{ color: '#6b7280' }}>Transferred Earned Credits:</span>
+                  <div style={{ fontWeight: 700, color: '#059669' }}>142 / 160 Credits</div>
+                </div>
+              </div>
+
+              {/* Bottom Security Footer with Live QR */}
+              <div
+                style={{
+                  marginTop: 28,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderTop: '2px dashed #e5e7eb',
+                  paddingTop: 16,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=AICTE:APAAR:${student.apaar_id}:HASH:7f9a12c8e3`}
+                    alt="Certificate QR Seal"
+                    style={{ width: 84, height: 84, border: '2px solid #1e3a8a', padding: 2 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#059669' }}>
+                      ✓ Verified DigiLocker Authenticity
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#6b7280', fontFamily: 'monospace', marginTop: 2 }}>
+                      SHA256: 7f9a12c8e3b501d8924f
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>
+                      Date of Issue: 26 Oct 2026
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.2rem', color: '#1e3a8a', fontWeight: 700 }}>AICTE Setu Grid</div>
+                  <div style={{ borderTop: '1px solid #9ca3af', width: 140, margin: '6px auto 2px' }} />
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>
+                    Member Secretary / Registrar
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

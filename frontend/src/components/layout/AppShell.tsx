@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
+import { ApaarChatbot } from '../chat/ApaarChatbot'
 
 export function AppShell() {
   const [open, setOpen] = useState(false)
@@ -18,6 +19,7 @@ export function AppShell() {
         <main id="main" className="content">
           <Outlet />
         </main>
+        <ApaarChatbot />
         <footer className="footer">
   AICTE APAAR-Setu Platform • SIH26263 National Registry
 </footer>
